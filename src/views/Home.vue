@@ -1,31 +1,46 @@
 <template>
   <div>
     <nav>
-      W 
-      <input id="input_width" value="1920" @input="change_canvas_size('w', $event.target.value)"><br>
-      H
-      <input id="input_height" value="1080" @change="change_canvas_size('h', $event.target.value)">
       Scale
-      <input id="input_scale" type="range" value="0" min="-30" max="15" @change="change_canvas_scale($event.target.value)">
+      <input id="input_scale" type="range" value="0" min="-30" max="15" @change="change_canvas_scale($event.target.value)" v-model="current_data.img_info.scale">
       Rotate
-      <input id="input_rotate" type="range" value="0" min="-45" max="45" @change="change_canvas_rotate($event.target.value)">
+      <input id="input_rotate" type="range" value="0" min="-45" max="45" @change="change_canvas_rotate($event.target.value)" v-model="current_data.img_info.rotate">
       Flip X
-      <input id="input_flip_x" type="checkbox" value="0" @change="change_canvas_flip($event.target.checked, 'x')"><br>
+      <input id="input_flip_x" type="checkbox" value="0" @change="change_canvas_flip($event.target.checked, 'x')" v-model="current_data.img_info.flip_x"><br>
       Color<br>
-      <input id="input_color1" type="color" value="#ffffff" @change="change_color">
-      <input id="input_color2" type="color" value="#ffffff" @change="change_color"><br>
-
-      Layer
+      <input id="input_color1" type="color" value="#ffffff" @change="set_color" v-model="current_data.img_info.color1">
+      <input id="input_color2" type="color" value="#ffffff" @change="set_color" v-model="current_data.img_info.color2"><br>
+      <a @click="set_color">set color</a>
+      <div>
+        Filter
+        <input id="input_filter_alpha" type="range" value="50" min="0" max="100" @change="change_filter" v-model="current_data.filter.alpha">
+        <select id="input_filter_type" name="filter" @change="change_filter" v-model="current_data.filter.type">
+          <option value="">None</option>
+          <option value="screen">Screen</option>
+        </select>
+      </div>
+      <div>
+        Layer
+      </div>
       <draggable tag="ul" id="layer" @end="set_layer_order">
         <li v-for="id in layer_order" :key="id" :id="id" @click="click_layer"><img :src="get_layer_thumbnail(id)"></li>
       </draggable>
 
-      <br>
-      <button @click="delete_layer">Delete</button>
+      <div>
+        <button @click="delete_layer">Delete</button>
+      </div>
+      <div>
+        W×H<br>
+        <input id="input_width" value="1920" @input="change_canvas_size('w', $event.target.value)">
+        <input id="input_height" value="1080" @change="change_canvas_size('h', $event.target.value)">
+      </div>
+      <div>
+        <a id="save" @click="save"><button>Save</button></a>
+      </div>
     </nav>
 
     <section id="main_section">
-      <div id="canvas" width="1920" height="1080" @click="click_object()"></div>
+      <div id="canvas" width="1920" height="1080"></div>
 
       <div id="images">
         <img v-for="(image,i) in images" :key="i" :src="get_thumbnail(image.type, image.image_id)" @click="click_image(image.type, image.image_id)">
@@ -58,6 +73,8 @@ export default {
       data: this.data,
       selected_layer: this.selected_layer,
       layer_order: this.layer_order,
+      current_data: this.current_data,
+      background_info: this.background_info,
     }
   },
 
@@ -66,15 +83,34 @@ export default {
       return this.replace('_', '').int()
     }
 
-    this.set_images()
+    String.prototype.rgb = function(){
+      return {
+        r: ("0x"+this.slice(1,3)).int(),
+        g: ("0x"+this.slice(3,5)).int(),
+        b: ("0x"+this.slice(5,7)).int(),
+      }
+    }
 
+    this.set_images()
 
     window.dragMoveListener = this.dragMoveListener
     this.data = []
     this.layer_order = []
     this.canvas_w = 1920
     this.canvas_h = 1080
-
+    this.current_data = {
+      img_info:{
+        scale: 0,
+        rotate: 0,
+        x_flip: 0,
+        color1: '#ffffff',
+        color2: '#ffffff',
+      },
+      filter: {
+        type: null,
+        alpha: 50,
+      }
+    }
   },
   mounted(){
     this.set_canvas_view_size()
@@ -111,7 +147,7 @@ export default {
     },
 
     click_image(type, image_id){
-      let img = new Image();
+      let img = new Image()
       img.crossOrigin = 'Anonymous'
       img.src = this.get_full(type, image_id)
 
@@ -126,20 +162,30 @@ export default {
 
         let canvas_ratio = w / h
         let img_ratio = img.width / img.height
-        let img_h, img_w
+        let img_h, img_w, x, y
         let new_id = '_' + _this.data.length
         let color2 = (type === 'object') ? '#ffffff' : '#000000'
 
+        if(type === 'object'){
+          if(canvas_ratio > img_ratio){
+            img_w = h * img_ratio
+            img_h = h
+          }
+          else{
+            img_w = w
+            img_h = w / img_ratio
+          }
 
-        if(canvas_ratio > img_ratio){
-          img_w = h * img_ratio
-          img_h = h
+          x = (w - img_w) / 2
+          y = (h - img_h) / 2
         }
         else{
-          img_w = w
-          img_h = w / img_ratio
+          img_w = (w + 100)
+          img_h = (w + 100) / img_ratio
+          x = - 50
+          y = - 50
         }
-        context.getContext('2d').drawImage(img, 0, 0, img_w, img_h)
+        context.getContext('2d').drawImage(img, x, y, img_w, img_h)
         
         _this.data.push({
           id: new_id,
@@ -148,15 +194,22 @@ export default {
           img_info: {
             image_id: image_id,
             type: type,
-            x: 0,
-            y: 0,
+            x: x,
+            y: y,
             w: img_w,
             h: img_h,
+            base_w: img_w,
+            base_h: img_h,
             scale: 0,
             rotate: 0,
+            last_rotate: 0,
             flip_x: 0,
             color1: '#ffffff',
             color2: color2,
+          },
+          filter:{
+            type: null,
+            alpha: 50,
           }
         })
 
@@ -168,34 +221,22 @@ export default {
       
     },
 
-    click_object(){
-
-    },
-
     click_layer(e){
-      //this.set_layer_order()
-
       this.$$$('#layer li').forEach(v=>{
         v.style.border = ''
       })
       e.target.style.border = 'solid 1px #fff'
       this.selected_layer = e.target.id
-console.log(this.selected_layer)
+
       let data = this.get_selected_layer_data()
-      this.$$('#input_scale').value = data.img_info.scale
-      this.$$('#input_rotate').value = data.img_info.rotate
-      this.$$('#input_flip_x').checked = data.img_info.flip_x
-      this.$$('#input_color1').value = data.img_info.color1
-      this.$$('#input_color2').value = data.img_info.color2
+      this.current_data = data
     },
 
     change_canvas_rotate(v){
-      //this.set_layer_order()
-
-      let data = this.get_selected_layer_data()
-      let rotate = data.img_info.rotate - v.int()
-      this.last_rotate = rotate
+      let data = this.current_data
+      let rotate = v.int() - data.img_info.last_rotate
       data.img_info.rotate = v.int()
+      data.img_info.last_rotate = v.int()
       data.context.getContext('2d').clearRect(0, 0, 9999, 9999);
       data.context.getContext('2d').translate(data.img.width/2, data.img.height/2)
       data.context.getContext('2d').rotate(rotate/180*Math.PI)
@@ -205,13 +246,12 @@ console.log(this.selected_layer)
     },
 
     change_canvas_scale(v){
-      //this.set_layer_order()
+      let data = this.current_data
+      let scale = v.int()
 
-      let data = this.get_selected_layer_data()
-      let scale = data.img_info.scale - v.int()
       data.img_info.scale = v.int()
-      data.img_info.w *= 0.9**scale
-      data.img_info.h *= 0.9**scale
+      data.img_info.w = data.img_info.base_w / 0.9**scale
+      data.img_info.h = data.img_info.base_h / 0.9**scale
       data.context.getContext('2d').clearRect(0, 0, 9999, 9999);
       data.context.getContext('2d').drawImage(data.img, data.img_info.x, data.img_info.y, data.img_info.w, data.img_info.h)
     },
@@ -236,26 +276,28 @@ console.log(this.selected_layer)
       }
     },
 
-    change_color(){
+    change_filter(){
+      let type = this.$$('#input_filter_type').value
+      let alpha = this.$$('#input_filter_alpha').value
+
       let data = this.get_selected_layer_data()
-      let data_ = data.context.getImageData(0,0,300,303)
-console.log(data_)
-      for(var i=0; i<data.length; i+=4){
-        if(data.data[i]>0){
-          //data.data[i] = data.data[i]
-          data.data[i+1] = 0
-          data.data[i+2] = 250
-          data.data[i+3] = data.data[i+3]
+      let picture_layer_id = this.layer_order[this.layer_order.indexOf(data.id) + 1].id_num()
+      //let picture_layer = this.data[picture_layer_id]
+      let filter = this.$$('#canvas'+data.id).getContext('2d').getImageData(0, 0, this.canvas_w, this.canvas_h)
+      let picture = this.$$('#canvas_'+picture_layer_id).getContext('2d').getImageData(0, 0, this.canvas_w, this.canvas_h)
+      let fd = filter.data
+      let pd = picture.data
+
+      for(let i=0; i<fd.length; i+=4){
+        switch(type){
+          case 'screen':
+            fd[i] = 100 * alpha + pd[i]
+
+            
         }
       }
 
-      data.putImageData(data, 0, 0);
-    },
-
-    create_image(context){
-      var image= new Image
-      image.src = context.canvas.toDataURL()
-      return image
+      data.context.getContext('2d').putImageData(filter, 0, 0)
     },
 
     delete_layer(){
@@ -298,8 +340,6 @@ console.log(data_)
     },
 
     get_selected_layer_data(){
-      //this.set_layer_order()
-
       let index = 0
       if(this.selected_layer){
         //index = this.layer_order.length - 1 - this.selected_layer.replace('_', '').int()
@@ -307,6 +347,44 @@ console.log(data_)
       }
 
       return this.data[index]
+    },
+
+    save(){
+      let datas = []
+      let new_data = new ImageData(this.canvas_w, this.canvas_h)
+      let _this = this
+      let i=0
+
+      this.$$$('#canvas canvas').forEach(function(v){
+        let img = v.getContext('2d').getImageData(0, 0, _this.canvas_w, _this.canvas_h)
+        datas.push(img.data)
+      })
+
+      for(i=0; i<new_data.data.length; i++){
+        new_data.data[i] = datas[0][i]
+      }
+
+      for(i=0; i<new_data.data.length; i+=4){
+        for(var c=1; c<datas.length; c++){
+          let alpha = datas[c][i+3] / 255
+          if(alpha === 0) continue
+
+          new_data.data[i] = (new_data.data[i] * (1-alpha) + datas[c][i] * alpha).int()
+          new_data.data[i+1] = (new_data.data[i+1] * (1-alpha) + datas[c][i+1] * alpha).int()
+          new_data.data[i+2] = (new_data.data[i+2] * (1-alpha) + datas[c][i+2] * alpha).int()
+          new_data.data[i+3] = 255
+        }
+      }
+
+      let context = document.createElement('canvas')
+      context.setAttribute('width', this.canvas_w)
+      context.setAttribute('height', this.canvas_h)
+      context.getContext('2d').putImageData(new_data, 0, 0)
+
+      let link = document.createElement('a')
+      link.href = context.toDataURL()
+      link.download = 'a.png'
+      link.click()
     },
 
     set_images(){
@@ -341,7 +419,66 @@ console.log(data_)
       })
     },
 
+    set_color(){
+      let data = this.get_selected_layer_data()
+      let color1_str = this.$$('#input_color1').value
+      let color2_str = this.$$('#input_color2').value
+      let color1 = color1_str.rgb()
+      let color2 = color2_str.rgb()
+      data.img_info.color1 = color1_str
+      data.img_info.color2 = color2_str
+      
+      let image_data = data.context.getContext('2d').getImageData(0, 0, this.canvas_w, this.canvas_h)
+      let data_ = image_data.data
+      
+      for(var i=0; i<data_.length; i+=4){
+        if(data.img_info.type === 'object'){
+          if(data_[i+3] === 255){
+            continue
+          }
+          data_[i] = ((color1.r * data_[i+3] + color2.r * (255 - data_[i+3])) / 255).int()
+          data_[i+1] = ((color1.g * data_[i+3] + color2.g * (255 - data_[i+3])) / 255).int()
+          data_[i+2] = ((color1.b * data_[i+3] + color2.b * (255 - data_[i+3])) / 255).int()
+        }
+        else{
+          if(data_[i]>0){
+            data_[i] = ((color1.r * data_[i] + color2.r * (255 - data_[i])) / 255).int()
+            data_[i+1] = ((color1.g * data_[i+1] + color2.g * (255 - data_[i+1])) / 255).int()
+            data_[i+2] = ((color1.b * data_[i+2] + color2.b * (255 - data_[i+2])) / 255).int()
+            //data_[i+3] = data_[i+3]
+          }
+        }
+      }
+
+      data.context.getContext('2d').putImageData(image_data, 0, 0)
+    },
+
     set_layer_condition(){
+      let _this = this
+
+      let dragStartListener = function() {
+          window.isDrag = true;
+      }
+
+      let dragMoveListener = function(e) {
+        if(!window.isDrag){
+          return;
+        }
+
+        let data = _this.get_selected_layer_data()
+
+        data.context.getContext('2d').clearRect(-999, -999, 9999, 9999)
+        let is_x_minus = data.img_info.flip_x ? -1 : 1
+        data.img_info.x = data.img_info.x + e.dx * is_x_minus
+        data.img_info.y = data.img_info.y + e.dy
+
+        //let rotate = this.last_rotate ? this.last_rotate : 0
+        // data.img_info.x = data.img_info.x + e.dx * Math.cos(rotate) + e.dy * Math.sin(rotate)
+        // data.img_info.y = data.img_info.y + e.dx * Math.sin(rotate) + e.dy * Math.cos(rotate)
+
+        data.context.getContext('2d').drawImage(data.img, data.img_info.x, data.img_info.y, data.img_info.w, data.img_info.h)
+      }
+
       interact('#canvas')
         .draggable({
           inertia: false,
@@ -354,14 +491,15 @@ console.log(data_)
           // ],
 
           onstart: (e) => {
-            this.dragStartListener(e);
+            dragStartListener(e);
           },
 
           onmove: (e) => {
-            this.dragMoveListener(e)
+            dragMoveListener(e)
           },
 
           // onend: (e) => {
+          //   this.set_color()
           //   console.log(111, e, window.data[0].img_info.x)
           //   this.isDrag = false
           // },
@@ -393,7 +531,7 @@ console.log(this.layer_order, this.layer_order.length)
 
       let _this = this
       data.sort(function(x, y) {
-        return _this.layer_order.indexOf(x.id.replace('canvas', '')) - _this.layer_order.indexOf(y.id.replace('canvas', ''));
+        return _this.layer_order.indexOf(x.id.replace('canvas', '')) - _this.layer_order.indexOf(y.id.replace('canvas', ''))
       })
 
       data.forEach(function(v){
@@ -402,28 +540,7 @@ console.log(this.layer_order, this.layer_order.length)
     
     },
 
-    dragStartListener() {
-        this.isDrag = true;
-    },
 
-    dragMoveListener (e) {
-      if(!this.isDrag){
-        return;
-      }
-
-      let data = this.get_selected_layer_data()
-
-      data.context.getContext('2d').clearRect(-999, -999, 9999, 9999)
-      let is_x_minus = data.img_info.flip_x ? -1 : 1
-      data.img_info.x = data.img_info.x + e.dx * is_x_minus
-      data.img_info.y = data.img_info.y + e.dy
-
-      //let rotate = this.last_rotate ? this.last_rotate : 0
-      // data.img_info.x = data.img_info.x + e.dx * Math.cos(rotate) + e.dy * Math.sin(rotate)
-      // data.img_info.y = data.img_info.y + e.dx * Math.sin(rotate) + e.dy * Math.cos(rotate)
-
-      data.context.getContext('2d').drawImage(data.img, data.img_info.x, data.img_info.y, data.img_info.w, data.img_info.h)
-    },
   }
 }
 
@@ -443,6 +560,9 @@ nav{
     width: 10%;
     vertical-align: top;
 }
+nav div{
+    margin: 0.5em 0;
+}
 nav input{
     max-width: 90%;
 }
@@ -455,6 +575,7 @@ nav input{
 #layer img{
     width: 100%;
     pointer-events: none;
+    margin: 0 0 5px;
 }
 
 section{
@@ -474,5 +595,6 @@ section{
 
 #images img{
     vertical-align: middle;
+    margin-right: 5px; 
 }
 </style>
