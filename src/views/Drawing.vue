@@ -1,6 +1,50 @@
 <template>
   <div>
-    <section>
+    <nav>
+      Scale
+      <input id="input_scale" type="range" value="0" min="-30" max="15" @change="change_canvas_scale($event.target.value)" v-model="current_data.img_info.scale">
+      Rotate
+      <input id="input_rotate" type="range" value="0" min="-45" max="45" @change="change_canvas_rotate($event.target.value)" v-model="current_data.img_info.rotate">
+      Flip X
+      <input id="input_flip_x" type="checkbox" value="0" @change="change_canvas_flip($event.target.checked, 'x')" v-model="current_data.img_info.flip_x"><br>
+      Color<br>
+      <input id="input_color1" type="color" value="#ffffff" @change="set_color" v-model="current_data.img_info.color1">
+      <input id="input_color2" type="color" value="#ffffff" @change="set_color" v-model="current_data.img_info.color2"><br>
+      <a @click="set_color">set color</a>
+      <div>
+        Filter
+        <input id="input_filter_alpha" type="range" value="100" min="0" max="100" @change="change_filter" v-model="current_data.filter.alpha">
+        <select id="input_filter_type" name="filter" @change="change_filter" v-model="current_data.filter.type">
+          <option v-for="(v,i) in filter_options" :value="i" :key="i">{{v}}</option>
+        </select><br>
+        <a @click="change_filter">set filter</a>
+      </div>
+      <div>
+        Layer
+      </div>
+      <draggable tag="ul" id="layer" @end="set_layer_order">
+        <li v-for="id in layer_order" :key="id" :id="id" @click="click_layer"><img :src="get_layer_thumbnail(id)"></li>
+      </draggable>
+
+      <div>
+        <button @click="delete_layer">Delete</button>
+      </div>
+      <div>
+        W×H<br>
+        <input id="input_width" value="1920" @input="change_canvas_size('w', $event.target.value)">
+        <input id="input_height" value="1080" @change="change_canvas_size('h', $event.target.value)">
+      </div>
+      <div>
+        <a id="save" @click="save"><button>Save</button></a>
+      </div>
+    </nav>
+
+    <section id="main_section">
+      <div id="canvas" width="1920" height="1080"></div>
+
+      <div id="images">
+        <img v-for="(image,i) in images" :key="i" :src="get_thumbnail(image.type, image.image_id)" @click="click_image(image.type, image.image_id)">
+      </div>
     </section>
   </div>
 </template>
@@ -10,6 +54,7 @@ import Mixin from '@/components/Common'
 import define from '@/assets/js/define'
 import axios from 'axios'
 import interact from 'interactjs'
+import draggable from 'vuedraggable'
 
 export default {
   name: 'Home',
@@ -18,13 +63,69 @@ export default {
     current: Object,
   },
   components: {
+    'draggable': draggable,
   },
   data () {
     return {
+      img_dir: define.IMG_BASE_URL,
+      images: this.images,
+      define: define,
+      data: this.data,
+      selected_layer: this.selected_layer,
+      layer_order: this.layer_order,
+      current_data: this.current_data,
+      background_info: this.background_info,
+      filter_options: {
+        'none': 'None',
+        'screen': 'Screen',
+        'color_dodge': 'Color Dodge',
+        'linear_dodge': 'Linear Dodge',
+        'multiply': 'Multiply',
+        'color_burn': 'Color Burn',
+        'linear_burn': 'Linear Burn',
+        'overlay': 'Overlay',
+        'soft_light': 'Soft Light',
+        'hard_light': 'Hard Light',
+        'vivid_light': 'Vivid Light',
+        'subtract': 'Subtract',
+        'divide': 'Divide',
+      },
     }
   },
 
   created() {
+    String.prototype.id_num = function(){
+      return this.replace('_', '').int()
+    }
+
+    String.prototype.rgb = function(){
+      return {
+        r: ("0x"+this.slice(1,3)).int(),
+        g: ("0x"+this.slice(3,5)).int(),
+        b: ("0x"+this.slice(5,7)).int(),
+      }
+    }
+
+    this.set_images()
+
+    window.dragMoveListener = this.dragMoveListener
+    this.data = []
+    this.layer_order = []
+    this.canvas_w = 1920
+    this.canvas_h = 1080
+    this.current_data = {
+      img_info:{
+        scale: 0,
+        rotate: 0,
+        x_flip: 0,
+        color1: '#ffffff',
+        color2: '#ffffff',
+      },
+      filter: {
+        type: null,
+        alpha: 100,
+      }
+    }
   },
   mounted(){
     this.set_canvas_view_size()
@@ -198,6 +299,10 @@ export default {
       if(this.layer_order.indexOf(data.id) >= this.layer_order.length) return
       let picture_layer_id = this.layer_order[this.layer_order.indexOf(data.id) + 1].id_num()
       //let picture_layer = this.data[picture_layer_id]
+
+      //reset
+      data.context.getContext('2d').drawImage(data.img, data.img_info.x, data.img_info.y, data.img_info.w, data.img_info.h)
+
       let filter = this.$$('#canvas'+data.id).getContext('2d').getImageData(0, 0, this.canvas_w, this.canvas_h)
       let picture = this.$$('#canvas_'+picture_layer_id).getContext('2d').getImageData(0, 0, this.canvas_w, this.canvas_h)
       let fd = filter.data
@@ -240,8 +345,8 @@ export default {
               else fd[d] = 2 * ( fd[d] + pd[d] - fd[d] * pd[d] / 255 ) - 255
               break
             case 'vivid_light':
-              if(pd[d] < 128) fd[d] = 1 - (1 - pd[d]) / (2 * fd[d])
-              else fd[d] = pd[d] / (1 - 2 * (fd[d] - 0.5))
+              if(pd[d] < 128) fd[d] = 255 - (255 - pd[d]) * 255 / fd[d]
+              else fd[d] = (255 ** 2 - 2 * (255 - pd[d]) * (255 - fd[d])) / 255
               break
             case 'subtract':
               fd[d] = pd[d] - fd[d]
@@ -390,6 +495,7 @@ export default {
       data.img_info.color1 = color1_str
       data.img_info.color2 = color2_str
       
+      data.context.getContext('2d').drawImage(data.img, data.img_info.x, data.img_info.y, data.img_info.w, data.img_info.h)
       let image_data = data.context.getContext('2d').getImageData(0, 0, this.canvas_w, this.canvas_h)
       let data_ = image_data.data
       
